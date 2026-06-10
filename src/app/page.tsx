@@ -321,7 +321,12 @@ export default function Home() {
                           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
                         }}
                       />
-                      {isBasis && <div className="basis-tag">정산기준</div>}
+                      <div
+                        className="basis-tag"
+                        style={{ visibility: isBasis ? "visible" : "hidden" }}
+                      >
+                        정산기준
+                      </div>
                     </th>
                   );
                 })}
