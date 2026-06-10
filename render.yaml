@@ -1,0 +1,23 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# 이 파일이 있는 저장소를 Render 대시보드의 "New +" → "Blueprint" 로 연결하면
+# 아래 웹 서비스가 자동으로 생성/배포됩니다.
+services:
+  - type: web
+    name: ysettlement
+    runtime: node
+    plan: free
+    region: singapore # Turso DB 리전(ap-northeast-1)과 가까운 곳 선택
+    branch: main
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    autoDeploy: true
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22.17.1"
+      # 아래 두 값은 비밀(토큰)이므로 blueprint 에 저장하지 않고
+      # Render 대시보드에서 직접 입력합니다(sync: false).
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false

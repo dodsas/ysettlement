@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/ySettlement.iml" filepath="$PROJECT_DIR$/ySettlement.iml" />
+      <module fileurl="file://$PROJECT_DIR$/ysettlement.iml" filepath="$PROJECT_DIR$/ysettlement.iml" />
     </modules>
   </component>
 </project>
