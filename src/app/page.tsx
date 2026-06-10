@@ -32,6 +32,8 @@ export default function Home() {
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [snapshotTitle, setSnapshotTitle] = useState("");
   const [restoring, setRestoring] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   // 콜백 ref: 대상 입력칸이 렌더되면 포커스 + 전체 선택
   const focusRef = useCallback(
@@ -194,6 +196,20 @@ export default function Home() {
     } catch {}
   };
 
+  const resetSheet = async () => {
+    if (resetting) return;
+    setResetting(true);
+    try {
+      await api("/api/reset", "POST");
+      await refresh();
+      showToast("시트를 초기화했습니다.");
+    } catch {
+    } finally {
+      setResetting(false);
+      setConfirmReset(false);
+    }
+  };
+
   const copyShareLink = async (token: string) => {
     const url = `${window.location.origin}/share/${token}`;
     try {
@@ -246,6 +262,29 @@ export default function Home() {
 
       {/* ---------- 시트 ---------- */}
       <div className="card" style={{ padding: 0, background: "transparent", border: "none", boxShadow: "none" }}>
+        <div className="sheet-toolbar">
+          {confirmReset ? (
+            <>
+              <span className="reset-confirm-text">
+                현재 시트를 모두 비울까요? (저장된 내역은 유지됩니다)
+              </span>
+              <button
+                className="btn danger"
+                onClick={resetSheet}
+                disabled={resetting}
+              >
+                {resetting ? "초기화 중…" : "초기화"}
+              </button>
+              <button className="btn" onClick={() => setConfirmReset(false)}>
+                취소
+              </button>
+            </>
+          ) : (
+            <button className="btn" onClick={() => setConfirmReset(true)}>
+              🗑 초기화
+            </button>
+          )}
+        </div>
         <div className="sheet-scroll">
           <table className="sheet">
             <thead>

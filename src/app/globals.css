@@ -311,6 +311,33 @@ td.add-col-spacer {
   background: #2f5fd6;
 }
 
+.btn.danger {
+  background: var(--neg);
+  border-color: var(--neg);
+  color: #fff;
+}
+
+.btn.danger:hover {
+  background: #a93226;
+}
+
+/* ---------- 시트 상단 툴바 ---------- */
+.sheet-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.reset-confirm-text {
+  font-size: 13px;
+  color: var(--neg);
+  font-weight: 600;
+  margin-right: auto;
+}
+
 /* ---------- 정산 결과 ---------- */
 .basis-line {
   font-size: 14px;
