@@ -24,6 +24,15 @@ export async function getSavedSettlement(
   return mapSettlementRow(rows[0] as Record<string, unknown>);
 }
 
+/** 저장된 정산 내역 목록 (최신순) */
+export async function listSavedSettlements(): Promise<SavedSettlement[]> {
+  await ensureSchema();
+  const { rows } = await db.execute(
+    "SELECT id, title, created_at, data, share_token FROM settlements ORDER BY id DESC"
+  );
+  return rows.map((r) => mapSettlementRow(r as Record<string, unknown>));
+}
+
 /** 공유 토큰으로 정산 내역 조회 (공유 페이지용, 없으면 null) */
 export async function getSharedSettlement(
   token: string
