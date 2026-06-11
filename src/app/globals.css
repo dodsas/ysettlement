@@ -371,6 +371,16 @@ td.add-col-spacer {
   margin-right: auto;
 }
 
+/* 모바일 전용 추가 버튼 (데스크톱에선 표 안 + 버튼 사용) */
+.toolbar-left {
+  display: flex;
+  gap: 8px;
+  margin-right: auto;
+}
+.mobile-add {
+  display: none;
+}
+
 /* ---------- 정산 결과 ---------- */
 .basis-line {
   font-size: 14px;
@@ -943,6 +953,22 @@ td.ro-cell:empty::after {
 
   .page-header h1 {
     font-size: 22px;
+  }
+
+  /* 모바일: 표 안의 '사람 추가' 열은 화면 밖으로 잘리므로 숨기고, 추가는 툴바 버튼으로 */
+  .mobile-add {
+    display: inline-flex;
+  }
+  table.sheet th.add-col,
+  table.sheet td.add-col-spacer {
+    display: none;
+  }
+  .add-item-row {
+    display: none;
+  }
+  /* 빈 시트에서 항목 헤더가 절반만 차지하지 않게 */
+  table.sheet.is-empty .corner {
+    width: 100%;
   }
 
   /* 경로 입력 폼: 세로 스택, 각 컨트롤 풀폭 */

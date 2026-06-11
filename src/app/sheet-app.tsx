@@ -538,6 +538,15 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
       {/* ---------- 시트 ---------- */}
       <div className="card" style={{ padding: 0, background: "transparent", border: "none", boxShadow: "none" }}>
         <div className="sheet-toolbar">
+          {/* 모바일에서는 추가 버튼을 표 위 툴바로 노출(표 안 추가열은 화면 밖으로 잘리므로) */}
+          <div className="toolbar-left">
+            <button className="btn mobile-add" onClick={addItem}>
+              + 항목
+            </button>
+            <button className="btn mobile-add" onClick={addPerson}>
+              + 사람
+            </button>
+          </div>
           {confirmReset ? (
             <>
               <span className="reset-confirm-text">
@@ -563,7 +572,7 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
         <div className="sheet-scroll">
           <table
             className={`sheet${people.length === 0 ? " is-empty" : ""}`}
-            style={{ minWidth: Math.max(480, 140 + people.length * 104 + 104) }}
+            style={{ minWidth: Math.max(320, 140 + people.length * 104) }}
           >
             <thead>
               <tr>
@@ -666,7 +675,7 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
                   <td className="add-col-spacer" />
                 </tr>
               ))}
-              <tr>
+              <tr className="add-item-row">
                 <th className="row-head add-row-head">
                   <button
                     className="add-cell-btn wide"
