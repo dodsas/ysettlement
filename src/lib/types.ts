@@ -29,13 +29,19 @@ export interface SettlementSnapshot extends SheetData {
   settlement: SettlementResult[];
 }
 
-/** 저장된 정산 내역 레코드 */
-export interface SavedSettlement {
+/** 저장된 정산 내역 목록 항목 (요약 — 큰 data 블롭 제외) */
+export interface SavedSettlementSummary {
   id: number;
   title: string;
   createdAt: string;
   /** 공유 URL 용 추측 불가능한 토큰 */
   shareToken: string;
+  basisName: string | null;
+  peopleCount: number;
+}
+
+/** 저장된 정산 내역 단건 (스냅샷 data 포함) */
+export interface SavedSettlement extends SavedSettlementSummary {
   data: SettlementSnapshot;
 }
 

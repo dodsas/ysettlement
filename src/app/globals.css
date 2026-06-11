@@ -89,6 +89,11 @@ table.sheet {
   table-layout: fixed;
 }
 
+/* 모바일 카드 레이아웃은 기본 숨김(데스크톱은 표 사용) */
+.sheet-mobile {
+  display: none;
+}
+
 table.sheet th,
 table.sheet td {
   border: 1px solid var(--border);
@@ -868,6 +873,28 @@ td.add-col-spacer {
   background: var(--basis-soft);
 }
 
+/* 추가 입력 모달 */
+.modal.add-modal {
+  max-width: 380px;
+}
+.add-modal-input {
+  width: 100%;
+  margin-top: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font: inherit;
+  font-size: 16px; /* iOS 자동 확대 방지 */
+  outline: none;
+}
+.add-modal-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.modal.add-modal .modal-actions {
+  justify-content: flex-end;
+}
+
 /* ---------- 공유 페이지 ---------- */
 .share-badge {
   display: inline-block;
@@ -955,20 +982,181 @@ td.ro-cell:empty::after {
     font-size: 22px;
   }
 
-  /* 모바일: 표 안의 '사람 추가' 열은 화면 밖으로 잘리므로 숨기고, 추가는 툴바 버튼으로 */
+  /* 모바일: 표 대신 항목별 카드 레이아웃 사용 (가로 스크롤 제거, 큰 입력칸) */
   .mobile-add {
     display: inline-flex;
   }
-  table.sheet th.add-col,
-  table.sheet td.add-col-spacer {
+  .sheet-scroll {
     display: none;
   }
-  .add-item-row {
-    display: none;
+  .sheet-mobile {
+    display: block;
   }
-  /* 빈 시트에서 항목 헤더가 절반만 차지하지 않게 */
-  table.sheet.is-empty .corner {
-    width: 100%;
+
+  /* 인원 칩 (이름 수정 / 정산기준 / 삭제) — 한 줄에 3명(3열 그리드) */
+  .m-people {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .m-chip {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px 4px 4px 6px;
+    background: var(--surface);
+    min-width: 0; /* 그리드 셀 안에서 줄어들 수 있게 */
+  }
+  .m-chip.basis {
+    border-color: var(--basis);
+    background: var(--basis-soft);
+  }
+  .m-chip input {
+    border: none;
+    background: transparent;
+    font: inherit;
+    font-size: 16px;
+    flex: 1;
+    min-width: 0; /* 긴 이름은 칩 안에서 잘림 */
+    width: auto;
+    padding: 4px 2px;
+    outline: none;
+    text-overflow: ellipsis;
+  }
+  .m-chip-star {
+    flex-shrink: 0;
+  }
+  .m-chip-del {
+    flex-shrink: 0;
+  }
+  .m-chip-star,
+  .m-chip-del {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    padding: 2px;
+    font-size: 15px;
+    line-height: 1;
+  }
+  .m-chip-del {
+    color: var(--text-muted);
+    font-size: 17px;
+  }
+
+  /* 항목 카드 */
+  .m-item {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .m-item-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: #fafbfc;
+    border-bottom: 1px solid var(--border);
+  }
+  .m-item-head input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font: inherit;
+    font-size: 16px;
+    font-weight: 700;
+    outline: none;
+    min-width: 0;
+  }
+  .m-item-del {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 19px;
+    cursor: pointer;
+    padding: 2px 6px;
+  }
+  .m-rows {
+    padding: 2px 14px 8px;
+  }
+  .m-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 0;
+    border-top: 1px solid var(--border);
+  }
+  .m-row:first-child {
+    border-top: none;
+  }
+  .m-row-name {
+    flex: 1;
+    font-size: 15px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .m-basis-dot {
+    font-size: 10px;
+    font-weight: 700;
+    color: #8a6d12;
+    background: #ffe8a8;
+    border-radius: 999px;
+    padding: 1px 6px;
+    white-space: nowrap;
+  }
+  .m-row input {
+    width: 118px;
+    text-align: right;
+    /* iOS 자동 확대 방지를 위해 16px 유지 */
+    font-size: 16px;
+    padding: 9px 11px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    outline: none;
+    background: var(--surface);
+    color: var(--text);
+  }
+  .m-row input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+  .m-row input::placeholder {
+    color: #c7ccd3;
+  }
+  .m-row-won {
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  /* 공유 페이지(읽기 전용) 입력 내역 카드 */
+  .m-item-ro-name {
+    flex: 1;
+    font-size: 16px;
+    font-weight: 700;
+    min-width: 0;
+  }
+  .m-row-val {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .m-row-val.empty {
+    color: #c7ccd3;
+    font-weight: 400;
+  }
+  .m-empty-note {
+    padding: 14px;
+    color: var(--text-muted);
+    font-size: 14px;
+    text-align: center;
   }
 
   /* 경로 입력 폼: 세로 스택, 각 컨트롤 풀폭 */

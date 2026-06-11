@@ -60,12 +60,15 @@ async function initSchema(): Promise<void> {
       )`,
       // 저장된 정산 내역(스냅샷). data 에 저장 시점의 시트+정산결과 JSON 보관.
       // share_token: 공유 URL 용 추측 불가능한 랜덤 토큰.
+      // basis_name / people_count: 목록 조회용 요약 컬럼(큰 data 블롭을 읽지 않기 위함)
       `CREATE TABLE IF NOT EXISTS settlements (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        title       TEXT NOT NULL,
-        created_at  TEXT NOT NULL,
-        data        TEXT NOT NULL,
-        share_token TEXT
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        title        TEXT NOT NULL,
+        created_at   TEXT NOT NULL,
+        data         TEXT NOT NULL,
+        share_token  TEXT,
+        basis_name   TEXT,
+        people_count INTEGER
       )`,
       // 경로 계산에 사용된 최근 위치 (라벨 기준 dedupe, 최신순)
       `CREATE TABLE IF NOT EXISTS recent_locations (
@@ -88,24 +91,53 @@ async function initSchema(): Promise<void> {
     "write"
   );
 
-  // 기존 DB 마이그레이션: share_token 컬럼이 없으면 추가 (이미 있으면 에러 무시)
-  try {
-    await db.execute("ALTER TABLE settlements ADD COLUMN share_token TEXT");
-  } catch {
-    /* 이미 존재 */
+  // 기존 DB 마이그레이션: 누락 컬럼 추가 (이미 있으면 에러 무시)
+  for (const col of [
+    "share_token TEXT",
+    "basis_name TEXT",
+    "people_count INTEGER",
+  ]) {
+    try {
+      await db.execute(`ALTER TABLE settlements ADD COLUMN ${col}`);
+    } catch {
+      /* 이미 존재 */
+    }
   }
-  await db.execute(
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_settlements_token ON settlements(share_token)"
+
+  // 인덱스
+  //  - share_token: 공유 페이지 토큰 조회 (UNIQUE)
+  //  - cells.person_id: 인원 삭제 시 DELETE ... WHERE person_id (PK 가 (item_id,person_id) 라 단독 person_id 는 미색인)
+  //  - recent_locations.label: 최근 위치 dedupe DELETE ... WHERE label
+  await db.batch(
+    [
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_settlements_token ON settlements(share_token)",
+      "CREATE INDEX IF NOT EXISTS idx_cells_person ON cells(person_id)",
+      "CREATE INDEX IF NOT EXISTS idx_recent_label ON recent_locations(label)",
+    ],
+    "write"
   );
 
-  // 토큰이 없는 기존 내역에 공유 토큰 백필
+  // 토큰/요약값이 없는 기존 내역 백필 (data JSON 파싱)
   const missing = await db.execute(
-    "SELECT id FROM settlements WHERE share_token IS NULL OR share_token = ''"
+    "SELECT id, data, share_token, basis_name, people_count FROM settlements WHERE share_token IS NULL OR share_token = '' OR people_count IS NULL"
   );
   for (const row of missing.rows) {
+    let basisName: string | null = null;
+    let peopleCount = 0;
+    try {
+      const data = JSON.parse(String(row.data));
+      basisName = data?.basisName ?? null;
+      peopleCount = Array.isArray(data?.people) ? data.people.length : 0;
+    } catch {
+      /* data 파싱 실패 시 기본값 */
+    }
+    const token =
+      row.share_token && String(row.share_token)
+        ? String(row.share_token)
+        : randomBytes(24).toString("hex");
     await db.execute({
-      sql: "UPDATE settlements SET share_token = ? WHERE id = ?",
-      args: [randomBytes(24).toString("hex"), Number(row.id)],
+      sql: "UPDATE settlements SET share_token = ?, basis_name = ?, people_count = ? WHERE id = ?",
+      args: [token, basisName, peopleCount, Number(row.id)],
     });
   }
 

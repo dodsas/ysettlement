@@ -1,12 +1,27 @@
 import { db, ensureSchema } from "./db";
-import type { SheetData, SavedSettlement, SettlementSnapshot } from "./types";
+import type {
+  SheetData,
+  SavedSettlement,
+  SavedSettlementSummary,
+  SettlementSnapshot,
+} from "./types";
 
-function mapSettlementRow(r: Record<string, unknown>): SavedSettlement {
+// 요약(목록용) — data 블롭을 읽지 않음
+function mapSummaryRow(r: Record<string, unknown>): SavedSettlementSummary {
   return {
     id: Number(r.id),
     title: String(r.title),
     createdAt: String(r.created_at),
     shareToken: r.share_token == null ? "" : String(r.share_token),
+    basisName: r.basis_name == null ? null : String(r.basis_name),
+    peopleCount: r.people_count == null ? 0 : Number(r.people_count),
+  };
+}
+
+// 단건(상세용) — data 블롭 포함
+function mapFullRow(r: Record<string, unknown>): SavedSettlement {
+  return {
+    ...mapSummaryRow(r),
     data: JSON.parse(String(r.data)) as SettlementSnapshot,
   };
 }
@@ -17,20 +32,20 @@ export async function getSavedSettlement(
 ): Promise<SavedSettlement | null> {
   await ensureSchema();
   const { rows } = await db.execute({
-    sql: "SELECT id, title, created_at, data, share_token FROM settlements WHERE id = ?",
+    sql: "SELECT id, title, created_at, data, share_token, basis_name, people_count FROM settlements WHERE id = ?",
     args: [id],
   });
   if (rows.length === 0) return null;
-  return mapSettlementRow(rows[0] as Record<string, unknown>);
+  return mapFullRow(rows[0] as Record<string, unknown>);
 }
 
-/** 저장된 정산 내역 목록 (최신순) */
-export async function listSavedSettlements(): Promise<SavedSettlement[]> {
+/** 저장된 정산 내역 목록 (최신순) — 요약만(큰 data 블롭 미조회) */
+export async function listSavedSettlements(): Promise<SavedSettlementSummary[]> {
   await ensureSchema();
   const { rows } = await db.execute(
-    "SELECT id, title, created_at, data, share_token FROM settlements ORDER BY id DESC"
+    "SELECT id, title, created_at, share_token, basis_name, people_count FROM settlements ORDER BY id DESC"
   );
-  return rows.map((r) => mapSettlementRow(r as Record<string, unknown>));
+  return rows.map((r) => mapSummaryRow(r as Record<string, unknown>));
 }
 
 /** 공유 토큰으로 정산 내역 조회 (공유 페이지용, 없으면 null) */
@@ -40,11 +55,11 @@ export async function getSharedSettlement(
   await ensureSchema();
   if (!token) return null;
   const { rows } = await db.execute({
-    sql: "SELECT id, title, created_at, data, share_token FROM settlements WHERE share_token = ?",
+    sql: "SELECT id, title, created_at, data, share_token, basis_name, people_count FROM settlements WHERE share_token = ?",
     args: [token],
   });
   if (rows.length === 0) return null;
-  return mapSettlementRow(rows[0] as Record<string, unknown>);
+  return mapFullRow(rows[0] as Record<string, unknown>);
 }
 
 /** DB에서 시트 전체 데이터를 읽어온다. */

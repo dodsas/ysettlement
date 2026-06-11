@@ -7,6 +7,7 @@ import type {
   Cell,
   SettlementResult,
   SavedSettlement,
+  SavedSettlementSummary,
   FavoriteLocation,
   RecentLocation,
 } from "@/lib/types";
@@ -213,7 +214,7 @@ function draftFromCells(cells: Cell[]): Record<string, string> {
 
 interface SheetAppProps {
   initialSheet: SheetResponse;
-  initialSaved: SavedSettlement[];
+  initialSaved: SavedSettlementSummary[];
 }
 
 export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) {
@@ -226,13 +227,16 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
   // 새로 추가된 사람/항목 입력칸에 자동 포커스 (예: "person-5", "item-3")
   const [focusTarget, setFocusTarget] = useState<string | null>(null);
   // 저장된 정산 내역
-  const [saved, setSaved] = useState<SavedSettlement[]>(initialSaved);
+  const [saved, setSaved] = useState<SavedSettlementSummary[]>(initialSaved);
   const [viewing, setViewing] = useState<SavedSettlement | null>(null);
   const [savingSnapshot, setSavingSnapshot] = useState(false);
   const [snapshotTitle, setSnapshotTitle] = useState("");
   const [restoring, setRestoring] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetting, setResetting] = useState(false);
+  // 모바일 추가 입력 모달
+  const [addModal, setAddModal] = useState<"item" | "person" | null>(null);
+  const [addModalValue, setAddModalValue] = useState("");
   // 경로 비용 자동 계산(네이버 지도)
   const [routeStart, setRouteStart] = useState("");
   const [routeGoal, setRouteGoal] = useState("");
@@ -320,9 +324,10 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
   };
 
   const commitCell = async (itemId: number, personId: number) => {
+    if (!data) return;
     const key = cellKey(itemId, personId);
     const raw = draft[key] ?? "";
-    const original = data?.cells.find(
+    const original = data.cells.find(
       (c) => c.itemId === itemId && c.personId === personId
     );
     const originalStr = original ? String(original.amount) : "";
@@ -333,6 +338,28 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
         personId,
         amount: raw.trim() === "" ? null : raw,
       });
+      // 금액을 입력(비우는 게 아닌)했으면 같은 행의 '빈 칸' 인원을 0으로 자동 채움
+      // → 그 항목을 전원 분담으로 설정. (이미 값이 있는 칸은 그대로 둠)
+      if (raw.trim() !== "") {
+        const fills = data.people.filter((p) => {
+          if (p.id === personId) return false;
+          const ck = cellKey(itemId, p.id);
+          const hasCommitted = data.cells.some(
+            (c) => c.itemId === itemId && c.personId === p.id
+          );
+          const hasDraft = (draft[ck] ?? "").trim() !== "";
+          return !hasCommitted && !hasDraft;
+        });
+        await Promise.all(
+          fills.map((p) =>
+            api("/api/cells", "PUT", {
+              itemId,
+              personId: p.id,
+              amount: 0,
+            })
+          )
+        );
+      }
       await refresh();
     } catch {
       /* toast 처리됨 */
@@ -356,6 +383,7 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
     } catch {}
   };
 
+  // 데스크톱(표 안 + 버튼): 기본 이름으로 생성 후 인라인 포커스
   const addPerson = async () => {
     try {
       const created = await api("/api/people", "POST", { name: "새 인원" });
@@ -368,6 +396,22 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
     try {
       const created = await api("/api/items", "POST", { name: "새 항목" });
       setFocusTarget(`item-${created.id}`);
+      await refresh();
+    } catch {}
+  };
+
+  // 모바일(툴바 + 버튼): 입력 모달에서 이름을 받아 생성
+  const submitAddModal = async () => {
+    const name = addModalValue.trim();
+    if (!name || !addModal) {
+      setAddModal(null);
+      return;
+    }
+    const url = addModal === "item" ? "/api/items" : "/api/people";
+    try {
+      await api(url, "POST", { name });
+      setAddModal(null);
+      setAddModalValue("");
       await refresh();
     } catch {}
   };
@@ -413,6 +457,14 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
       await api(`/api/settlements/${id}`, "DELETE");
       if (viewing?.id === id) setViewing(null);
       await loadSaved();
+    } catch {}
+  };
+
+  // 목록은 요약만 갖고 있으므로, 상세(모달)는 클릭 시 data 포함 단건을 조회
+  const openViewing = async (id: number) => {
+    try {
+      const full = await api(`/api/settlements/${id}`, "GET");
+      setViewing(full);
     } catch {}
   };
 
@@ -540,10 +592,22 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
         <div className="sheet-toolbar">
           {/* 모바일에서는 추가 버튼을 표 위 툴바로 노출(표 안 추가열은 화면 밖으로 잘리므로) */}
           <div className="toolbar-left">
-            <button className="btn mobile-add" onClick={addItem}>
+            <button
+              className="btn mobile-add"
+              onClick={() => {
+                setAddModalValue("");
+                setAddModal("item");
+              }}
+            >
               + 항목
             </button>
-            <button className="btn mobile-add" onClick={addPerson}>
+            <button
+              className="btn mobile-add"
+              onClick={() => {
+                setAddModalValue("");
+                setAddModal("person");
+              }}
+            >
               + 사람
             </button>
           </div>
@@ -689,6 +753,105 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
               </tr>
             </tbody>
           </table>
+        </div>
+
+        {/* ---------- 모바일 카드 레이아웃 ---------- */}
+        <div className="sheet-mobile">
+          {people.length > 0 && (
+            <div className="m-people">
+              {people.map((p) => {
+                const isBasis = p.id === basisPersonId;
+                return (
+                  <div key={p.id} className={`m-chip${isBasis ? " basis" : ""}`}>
+                    <button
+                      className="m-chip-star"
+                      title={isBasis ? "정산기준 해제" : "정산기준으로 지정"}
+                      onClick={() => setBasis(p.id)}
+                    >
+                      {isBasis ? "⭐" : "☆"}
+                    </button>
+                    <input
+                      defaultValue={p.name}
+                      key={`m-name-${p.id}-${p.name}`}
+                      onBlur={(e) => renamePerson(p.id, e.target.value, p.name)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.nativeEvent.isComposing)
+                          (e.target as HTMLInputElement).blur();
+                      }}
+                    />
+                    <button
+                      className="m-chip-del"
+                      title="삭제"
+                      onClick={() => deletePerson(p.id)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* 모바일: 새로 추가한 항목이 맨 위에 보이도록 최신순(역순) 표시 */}
+          {items
+            .slice()
+            .reverse()
+            .map((item) => (
+            <div key={item.id} className="m-item">
+              <div className="m-item-head">
+                <input
+                  defaultValue={item.name}
+                  key={`m-item-${item.id}-${item.name}`}
+                  onBlur={(e) => renameItem(item.id, e.target.value, item.name)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.nativeEvent.isComposing)
+                      (e.target as HTMLInputElement).blur();
+                  }}
+                />
+                <button
+                  className="m-item-del"
+                  title="항목 삭제"
+                  onClick={() => deleteItem(item.id)}
+                >
+                  ×
+                </button>
+              </div>
+              {people.length === 0 ? (
+                <div className="m-empty-note">위에서 인원을 먼저 추가하세요.</div>
+              ) : (
+                <div className="m-rows">
+                  {people.map((p) => {
+                    const key = cellKey(item.id, p.id);
+                    const isBasis = p.id === basisPersonId;
+                    return (
+                      <div key={p.id} className="m-row">
+                        <span className="m-row-name">
+                          {p.name}
+                          {isBasis && <span className="m-basis-dot">기준</span>}
+                        </span>
+                        <input
+                          inputMode="decimal"
+                          placeholder="-"
+                          value={draft[key] ?? ""}
+                          onChange={(e) => onCellChange(item.id, p.id, e.target.value)}
+                          onBlur={() => commitCell(item.id, p.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.nativeEvent.isComposing)
+                              (e.target as HTMLInputElement).blur();
+                          }}
+                        />
+                        <span className="m-row-won">원</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {items.length === 0 && (
+            <div className="m-empty-note">위 「+ 항목」으로 항목을 추가하세요.</div>
+          )}
         </div>
       </div>
 
@@ -853,11 +1016,11 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
           <ul className="saved-list">
             {saved.map((s) => (
               <li key={s.id} className="saved-item">
-                <button className="saved-main" onClick={() => setViewing(s)}>
+                <button className="saved-main" onClick={() => openViewing(s.id)}>
                   <span className="saved-title">{s.title}</span>
                   <span className="saved-meta">
-                    {formatDate(s.createdAt)} · 기준{" "}
-                    {s.data.basisName ?? "미지정"} · 인원 {s.data.people.length}명
+                    {formatDate(s.createdAt)} · 기준 {s.basisName ?? "미지정"} ·
+                    인원 {s.peopleCount}명
                   </span>
                 </button>
                 <div className="saved-actions">
@@ -968,6 +1131,41 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* 모바일 추가 입력 모달 */}
+      {addModal && (
+        <div className="modal-overlay" onClick={() => setAddModal(null)}>
+          <div
+            className="modal add-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="modal-title">
+              {addModal === "item" ? "항목 추가" : "사람 추가"}
+            </h3>
+            <input
+              className="add-modal-input"
+              autoFocus
+              placeholder={
+                addModal === "item" ? "항목 이름 (예: 숙소비)" : "이름 (예: 영희)"
+              }
+              value={addModalValue}
+              onChange={(e) => setAddModalValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.nativeEvent.isComposing)
+                  submitAddModal();
+              }}
+            />
+            <div className="modal-actions" style={{ marginTop: 16 }}>
+              <button className="btn" onClick={() => setAddModal(null)}>
+                취소
+              </button>
+              <button className="btn primary" onClick={submitAddModal}>
+                추가
+              </button>
+            </div>
           </div>
         </div>
       )}

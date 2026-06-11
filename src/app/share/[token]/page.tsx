@@ -150,6 +150,34 @@ export default async function SharePage({
             </tbody>
           </table>
         </div>
+
+        {/* 모바일 카드 레이아웃 (읽기 전용) */}
+        <div className="sheet-mobile" style={{ padding: "0 16px 16px" }}>
+          {items.map((item) => (
+            <div key={item.id} className="m-item">
+              <div className="m-item-head">
+                <span className="m-item-ro-name">{item.name}</span>
+              </div>
+              <div className="m-rows">
+                {people.map((p) => {
+                  const v = cellMap.get(`${item.id}:${p.id}`);
+                  const isBasis = p.id === basisPersonId;
+                  return (
+                    <div key={p.id} className="m-row">
+                      <span className="m-row-name">
+                        {p.name}
+                        {isBasis && <span className="m-basis-dot">기준</span>}
+                      </span>
+                      <span className={`m-row-val${v === undefined ? " empty" : ""}`}>
+                        {v === undefined ? "-" : `${v.toLocaleString("ko-KR")}원`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       <p className="share-foot">
