@@ -39,6 +39,22 @@ export interface SavedSettlement {
   data: SettlementSnapshot;
 }
 
+/** 즐겨찾기 위치 (별칭 지정) */
+export interface FavoriteLocation {
+  id: number;
+  alias: string;
+  label: string;
+  x: string;
+  y: string;
+}
+
+/** 최근 사용 위치 */
+export interface RecentLocation {
+  label: string;
+  x: string;
+  y: string;
+}
+
 /** 각 사람의 정산 결과 */
 export interface SettlementResult {
   personId: number;

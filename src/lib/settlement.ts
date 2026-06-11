@@ -63,7 +63,7 @@ export function calculateSettlement(sheet: SheetData): SettlementResult[] {
   });
 }
 
-/** 소수점 둘째 자리까지 반올림(부동소수 오차 정리) */
+/** 원화는 정수로 반올림 (소수점 원 표기 방지). 잔여 차액은 정산기준이 흡수. */
 function round(n: number): number {
-  return Math.round((n + Number.EPSILON) * 100) / 100;
+  return Math.round(n);
 }

@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Person,
   Item,
   Cell,
   SettlementResult,
   SavedSettlement,
+  FavoriteLocation,
+  RecentLocation,
 } from "@/lib/types";
 import { formatWon, formatDate } from "@/lib/format";
 
@@ -19,6 +21,189 @@ interface SheetResponse {
 }
 
 const cellKey = (itemId: number, personId: number) => `${itemId}:${personId}`;
+
+interface Candidate {
+  label: string;
+  sub: string;
+  x: string;
+  y: string;
+  kind: "place" | "address";
+}
+
+type Coord = { x: string; y: string } | null;
+
+/** 주소 자동완성 입력칸: 대충 입력하면 후보를 드롭다운으로 보여주고 선택하면 좌표까지 확정.
+ *  favorites/recents 가 주어지면 빈 상태에서 즐겨찾기·최근 위치를 보여주고,
+ *  ⭐ 버튼으로 현재 위치를 별칭과 함께 즐겨찾기에 저장할 수 있다. */
+function AddressField({
+  placeholder,
+  onChange,
+  favorites,
+  recents,
+  onSaveFavorite,
+  onDeleteFavorite,
+}: {
+  placeholder: string;
+  onChange: (text: string, coord: Coord) => void;
+  favorites?: FavoriteLocation[];
+  recents?: RecentLocation[];
+  onSaveFavorite?: (alias: string, label: string, coord: Coord) => void;
+  onDeleteFavorite?: (id: number) => void;
+}) {
+  const [text, setText] = useState("");
+  const [coord, setCoord] = useState<Coord>(null);
+  const [results, setResults] = useState<Candidate[]>([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const hasMemory = Boolean(favorites?.length || recents?.length);
+  const hasQuery = text.trim().length >= 2;
+
+  const pick = (label: string, c: Coord) => {
+    setText(label);
+    setCoord(c);
+    onChange(label, c);
+    setOpen(false);
+  };
+
+  const runSearch = (q: string) => {
+    if (timer.current) clearTimeout(timer.current);
+    if (q.trim().length < 2) {
+      setResults([]);
+      setOpen(hasMemory); // 검색어 없으면 즐겨찾기/최근 표시
+      return;
+    }
+    timer.current = setTimeout(async () => {
+      setLoading(true);
+      setOpen(true);
+      try {
+        const res = await fetch(`/api/geocode?query=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        setResults(res.ok && Array.isArray(data.candidates) ? data.candidates : []);
+      } catch {
+        setResults([]);
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+  };
+
+  const saveFavorite = () => {
+    if (!onSaveFavorite || !text.trim()) return;
+    const alias = window.prompt(`'${text}' 의 별칭을 입력하세요. (예: 집, 회사)`);
+    if (alias && alias.trim()) onSaveFavorite(alias.trim(), text.trim(), coord);
+  };
+
+  return (
+    <div className="addr-field">
+      <input
+        className={`route-input${onSaveFavorite ? " has-fav" : ""}`}
+        placeholder={placeholder}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          setCoord(null);
+          onChange(e.target.value, null); // 직접 수정 시 좌표 해제(전송 시 재지오코딩)
+          runSearch(e.target.value);
+        }}
+        onFocus={() => setOpen(hasQuery ? results.length > 0 : hasMemory)}
+        onBlur={() => setTimeout(() => setOpen(false), 180)}
+      />
+      {onSaveFavorite && text.trim() && (
+        <button
+          className="addr-fav-btn"
+          title="즐겨찾기에 별칭으로 저장"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            saveFavorite();
+          }}
+        >
+          ☆
+        </button>
+      )}
+      {open && (
+        <ul className="addr-dropdown">
+          {hasQuery ? (
+            <>
+              {loading && <li className="addr-msg">검색 중…</li>}
+              {!loading && results.length === 0 && (
+                <li className="addr-msg">결과 없음</li>
+              )}
+              {results.map((r, i) => (
+                <li
+                  key={i}
+                  className="addr-option"
+                  onMouseDown={() => pick(r.label, { x: r.x, y: r.y })}
+                >
+                  <span className="addr-road">
+                    {r.kind === "place" && <span className="addr-pin">📍</span>}
+                    {r.label}
+                  </span>
+                  {r.sub && <span className="addr-jibun">{r.sub}</span>}
+                </li>
+              ))}
+            </>
+          ) : (
+            <>
+              {favorites && favorites.length > 0 && (
+                <li className="addr-group">⭐ 즐겨찾기</li>
+              )}
+              {favorites?.map((f) => (
+                <li
+                  key={`f-${f.id}`}
+                  className="addr-option"
+                  onMouseDown={() => {
+                    const hasCoord = Boolean(f.x && f.y);
+                    // 좌표가 있으면 별칭을 표시(좌표로 계산), 없으면 주소를 표시(지오코딩)
+                    pick(
+                      hasCoord ? f.alias : f.label,
+                      hasCoord ? { x: f.x, y: f.y } : null
+                    );
+                  }}
+                >
+                  <span className="addr-road">
+                    <span className="addr-pin">⭐</span>
+                    {f.alias}
+                  </span>
+                  <span className="addr-jibun">{f.label}</span>
+                  {onDeleteFavorite && (
+                    <button
+                      className="addr-del"
+                      title="즐겨찾기 삭제"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onDeleteFavorite(f.id);
+                      }}
+                    >
+                      ×
+                    </button>
+                  )}
+                </li>
+              ))}
+              {recents && recents.length > 0 && (
+                <li className="addr-group">🕘 최근</li>
+              )}
+              {recents?.map((r, i) => (
+                <li
+                  key={`r-${i}`}
+                  className="addr-option"
+                  onMouseDown={() =>
+                    pick(r.label, r.x && r.y ? { x: r.x, y: r.y } : null)
+                  }
+                >
+                  <span className="addr-road">🕘 {r.label}</span>
+                </li>
+              ))}
+              {!hasMemory && <li className="addr-msg">최근·즐겨찾기 없음</li>}
+            </>
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 function draftFromCells(cells: Cell[]): Record<string, string> {
   const d: Record<string, string> = {};
@@ -48,6 +233,23 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
   const [restoring, setRestoring] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetting, setResetting] = useState(false);
+  // 경로 비용 자동 계산(네이버 지도)
+  const [routeStart, setRouteStart] = useState("");
+  const [routeGoal, setRouteGoal] = useState("");
+  const [routeStartCoord, setRouteStartCoord] = useState<Coord>(null);
+  const [routeGoalCoord, setRouteGoalCoord] = useState<Coord>(null);
+  const [routePayer, setRoutePayer] = useState<number | "">("");
+  const [routeBusy, setRouteBusy] = useState(false);
+  // 즐겨찾기 / 최근 위치
+  const [favorites, setFavorites] = useState<FavoriteLocation[]>([]);
+  const [recents, setRecents] = useState<RecentLocation[]>([]);
+  const [routeResult, setRouteResult] = useState<{
+    fuelPrice: number;
+    tollFare: number;
+    distance: number;
+    startLabel: string;
+    goalLabel: string;
+  } | null>(null);
 
   // 콜백 ref: 대상 입력칸이 렌더되면 포커스 + 전체 선택
   const focusRef = useCallback(
@@ -82,6 +284,18 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
     if (!res.ok) return;
     setSaved(await res.json());
   }, []);
+
+  const loadLocations = useCallback(async () => {
+    const res = await fetch("/api/locations", { cache: "no-store" });
+    if (!res.ok) return;
+    const data = await res.json();
+    setFavorites(data.favorites ?? []);
+    setRecents(data.recents ?? []);
+  }, []);
+
+  useEffect(() => {
+    loadLocations();
+  }, [loadLocations]);
 
   const api = useCallback(
     async (url: string, method: string, body?: unknown) => {
@@ -216,6 +430,61 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
     }
   };
 
+  const calcRouteCost = async () => {
+    if (routeBusy) return;
+    if (!routeStart.trim() || !routeGoal.trim()) {
+      showToast("출발지와 도착지를 입력하세요.", true);
+      return;
+    }
+    if (routePayer === "") {
+      showToast("결제자를 선택하세요.", true);
+      return;
+    }
+    setRouteBusy(true);
+    try {
+      const res = await api("/api/route-cost", "POST", {
+        start: routeStart.trim(),
+        goal: routeGoal.trim(),
+        startX: routeStartCoord?.x,
+        startY: routeStartCoord?.y,
+        goalX: routeGoalCoord?.x,
+        goalY: routeGoalCoord?.y,
+        payerId: routePayer,
+      });
+      setRouteResult(res);
+      await refresh();
+      await loadLocations(); // 최근 위치 갱신
+      showToast(
+        `유류비 ${formatWon(res.fuelPrice)} · 통행료 ${formatWon(
+          res.tollFare
+        )} 반영됨`
+      );
+    } catch {
+    } finally {
+      setRouteBusy(false);
+    }
+  };
+
+  const saveFavorite = async (alias: string, label: string, coord: Coord) => {
+    try {
+      await api("/api/locations", "POST", {
+        alias,
+        label,
+        x: coord?.x,
+        y: coord?.y,
+      });
+      await loadLocations();
+      showToast(`즐겨찾기 '${alias}' 저장됨`);
+    } catch {}
+  };
+
+  const deleteFavorite = async (id: number) => {
+    try {
+      await api(`/api/locations/${id}`, "DELETE");
+      await loadLocations();
+    } catch {}
+  };
+
   const copyShareLink = async (token: string) => {
     const url = `${window.location.origin}/share/${token}`;
     try {
@@ -292,7 +561,10 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
           )}
         </div>
         <div className="sheet-scroll">
-          <table className="sheet">
+          <table
+            className={`sheet${people.length === 0 ? " is-empty" : ""}`}
+            style={{ minWidth: Math.max(480, 140 + people.length * 104 + 104) }}
+          >
             <thead>
               <tr>
                 <th className="corner">
@@ -324,7 +596,8 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
                         ref={(el) => focusRef(el, `person-${p.id}`)}
                         onBlur={(e) => renamePerson(p.id, e.target.value, p.name)}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                          if (e.key === "Enter" && !e.nativeEvent.isComposing)
+                            (e.target as HTMLInputElement).blur();
                         }}
                       />
                       <div
@@ -338,11 +611,12 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
                 })}
                 <th className="add-col">
                   <button
-                    className="add-cell-btn"
+                    className="add-cell-btn add-person"
                     title="사람 추가"
                     onClick={addPerson}
                   >
-                    +
+                    <span className="add-plus">+</span>
+                    <span className="add-label-text">사람 추가</span>
                   </button>
                 </th>
               </tr>
@@ -365,7 +639,8 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
                       ref={(el) => focusRef(el, `item-${item.id}`)}
                       onBlur={(e) => renameItem(item.id, e.target.value, item.name)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                        if (e.key === "Enter" && !e.nativeEvent.isComposing)
+                          (e.target as HTMLInputElement).blur();
                       }}
                     />
                   </th>
@@ -381,7 +656,8 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
                           onChange={(e) => onCellChange(item.id, p.id, e.target.value)}
                           onBlur={() => commitCell(item.id, p.id)}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                            if (e.key === "Enter" && !e.nativeEvent.isComposing)
+                            (e.target as HTMLInputElement).blur();
                           }}
                         />
                       </td>
@@ -407,6 +683,75 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
         </div>
       </div>
 
+      {/* ---------- 경로 비용 자동 계산 ---------- */}
+      <div className="card">
+        <h2 className="card-title">🚗 경로 비용 자동 계산 (네이버 지도)</h2>
+        <p className="basis-line" style={{ marginBottom: 14 }}>
+          출발지·도착지를 입력하면 <strong>왕복 기준</strong> 예상{" "}
+          <strong>유류비</strong>·<strong>통행료</strong>를 계산해, 결제자 칸엔
+          전액·나머지 인원 칸엔 0(균등 분담)으로 시트에 채웁니다.
+        </p>
+        <div className="route-form">
+          <AddressField
+            placeholder="출발지 (예: 경인로605)"
+            onChange={(t, c) => {
+              setRouteStart(t);
+              setRouteStartCoord(c);
+            }}
+            favorites={favorites}
+            recents={recents}
+            onSaveFavorite={saveFavorite}
+            onDeleteFavorite={deleteFavorite}
+          />
+          <span className="route-arrow">→</span>
+          <AddressField
+            placeholder="도착지 (예: 의왕호수공원)"
+            onChange={(t, c) => {
+              setRouteGoal(t);
+              setRouteGoalCoord(c);
+            }}
+          />
+          <select
+            className="route-select"
+            value={routePayer}
+            onChange={(e) =>
+              setRoutePayer(e.target.value === "" ? "" : Number(e.target.value))
+            }
+          >
+            <option value="">결제자 선택</option>
+            {people.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <button
+            className="btn primary"
+            onClick={calcRouteCost}
+            disabled={routeBusy || people.length === 0}
+          >
+            {routeBusy ? "계산 중…" : "계산 후 추가"}
+          </button>
+        </div>
+        {people.length === 0 && (
+          <p className="empty-note" style={{ marginTop: 10 }}>
+            먼저 시트에 사람을 추가하세요.
+          </p>
+        )}
+        {routeResult && (
+          <div className="route-result">
+            <span>
+              왕복: {routeResult.startLabel} ↔ {routeResult.goalLabel}
+            </span>
+            <span>
+              왕복 거리 {(routeResult.distance / 1000).toFixed(1)}km · 유류비{" "}
+              <strong>{formatWon(routeResult.fuelPrice)}</strong> · 통행료{" "}
+              <strong>{formatWon(routeResult.tollFare)}</strong>
+            </span>
+          </div>
+        )}
+      </div>
+
       {/* ---------- 정산 결과 ---------- */}
       <div className="card">
         <div className="card-head-row">
@@ -418,7 +763,7 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
               value={snapshotTitle}
               onChange={(e) => setSnapshotTitle(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") createSnapshot();
+                if (e.key === "Enter" && !e.nativeEvent.isComposing) createSnapshot();
               }}
             />
             <button
@@ -506,29 +851,31 @@ export default function SheetApp({ initialSheet, initialSaved }: SheetAppProps) 
                     {s.data.basisName ?? "미지정"} · 인원 {s.data.people.length}명
                   </span>
                 </button>
-                <a
-                  className="saved-action"
-                  href={`/share/${s.shareToken}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="공유 페이지 열기"
-                >
-                  열기 ↗
-                </a>
-                <button
-                  className="saved-action"
-                  title="공유 링크 복사"
-                  onClick={() => copyShareLink(s.shareToken)}
-                >
-                  🔗 공유
-                </button>
-                <button
-                  className="del-btn-visible"
-                  title="내역 삭제"
-                  onClick={() => deleteSnapshot(s.id)}
-                >
-                  ×
-                </button>
+                <div className="saved-actions">
+                  <a
+                    className="saved-action"
+                    href={`/share/${s.shareToken}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="공유 페이지 열기"
+                  >
+                    열기 ↗
+                  </a>
+                  <button
+                    className="saved-action"
+                    title="공유 링크 복사"
+                    onClick={() => copyShareLink(s.shareToken)}
+                  >
+                    🔗 공유
+                  </button>
+                  <button
+                    className="del-btn-visible"
+                    title="내역 삭제"
+                    onClick={() => deleteSnapshot(s.id)}
+                  >
+                    ×
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

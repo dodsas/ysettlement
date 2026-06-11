@@ -67,6 +67,23 @@ async function initSchema(): Promise<void> {
         data        TEXT NOT NULL,
         share_token TEXT
       )`,
+      // 경로 계산에 사용된 최근 위치 (라벨 기준 dedupe, 최신순)
+      `CREATE TABLE IF NOT EXISTS recent_locations (
+        id      INTEGER PRIMARY KEY AUTOINCREMENT,
+        label   TEXT NOT NULL,
+        x       TEXT,
+        y       TEXT,
+        used_at TEXT NOT NULL
+      )`,
+      // 즐겨찾기 위치 (별칭 alias 지정)
+      `CREATE TABLE IF NOT EXISTS favorite_locations (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        alias      TEXT NOT NULL,
+        label      TEXT NOT NULL,
+        x          TEXT,
+        y          TEXT,
+        created_at TEXT NOT NULL
+      )`,
     ],
     "write"
   );

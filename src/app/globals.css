@@ -85,6 +85,8 @@ table.sheet {
   border-collapse: collapse;
   width: 100%;
   min-width: 480px;
+  /* 컬럼폭을 명시값으로 고정. 인원(금액) 컬럼은 좁게, 남는 폭은 항목 컬럼이 흡수 */
+  table-layout: fixed;
 }
 
 table.sheet th,
@@ -101,18 +103,26 @@ table.sheet thead th {
   vertical-align: middle;
 }
 
+/* 인원(금액) 컬럼: '1,000,000'(7자리)까지만 들어가도록 폭 고정 */
 .col-head {
   padding: 10px 12px;
-  min-width: 110px;
+  width: 104px;
+}
+
+/* 고정폭 컬럼 안에서 긴 이름/숫자는 잘리도록(컬럼이 늘어나지 않게) */
+.col-head input,
+.cell input {
+  text-overflow: ellipsis;
 }
 
 .col-head.basis {
   background: var(--basis-soft);
 }
 
+/* 항목 컬럼: 폭 미지정 → fixed 레이아웃에서 남는 폭을 모두 흡수(greedy) */
 .corner {
   background: #fafbfc;
-  min-width: 120px;
+  min-width: 140px;
   text-align: left;
 }
 
@@ -235,11 +245,34 @@ th:hover .del-btn,
 }
 
 /* ---------- 인라인 추가(+) 버튼 ---------- */
+/* add-col 은 콘텐츠 크기(width:1%)로 축소 → 혼자 폭을 독차지하지 않는다.
+   남는 가로폭은 인원 컬럼들이 균등하게 나눠 갖는다(비율 자동 조정). */
 th.add-col {
   background: #fafbfc;
-  width: 48px;
-  min-width: 48px;
+  width: 104px; /* 인원 셀과 동일 폭 */
+  white-space: nowrap;
   padding: 0;
+}
+
+/* 빈 시트(인원 0명): 항목 / 사람추가 를 절반씩 균형 표시 */
+table.sheet.is-empty .corner {
+  width: 50%;
+}
+table.sheet.is-empty th.add-col {
+  width: 50%;
+}
+
+/* 사람 추가 버튼: '+ 항목 추가' 와 동일한 폰트(14px) */
+.add-cell-btn.add-person {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 14px;
+}
+
+.add-label-text {
+  white-space: nowrap;
 }
 
 td.add-col-spacer {
@@ -451,6 +484,182 @@ td.add-col-spacer {
   cursor: default;
 }
 
+/* ---------- 경로 비용 자동 계산 ---------- */
+.route-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.route-input {
+  flex: 1;
+  min-width: 140px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  padding: 8px 12px;
+  font: inherit;
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.route-input:focus,
+.route-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.route-arrow {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+/* 주소 자동완성 */
+.addr-field {
+  position: relative;
+  flex: 1;
+  min-width: 160px;
+}
+
+.addr-field .route-input {
+  width: 100%;
+}
+
+/* 즐겨찾기(☆) 버튼이 붙는 입력칸은 우측 여백 확보 → 글자와 겹치지 않게 */
+.addr-field .route-input.has-fav {
+  padding-right: 34px;
+}
+
+.addr-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.addr-msg {
+  padding: 10px 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.addr-option {
+  padding: 8px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.addr-option:hover {
+  background: var(--accent-soft);
+}
+
+.addr-road {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.addr-pin {
+  margin-right: 4px;
+  font-size: 12px;
+}
+
+/* 즐겨찾기 저장 버튼 (입력칸 우측) */
+.addr-fav-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 17px;
+  color: var(--basis);
+  padding: 2px 4px;
+  line-height: 1;
+  z-index: 2;
+}
+
+.addr-fav-btn:hover {
+  color: #d99e0b;
+}
+
+/* 드롭다운 그룹 헤더 (즐겨찾기 / 최근) */
+.addr-group {
+  padding: 8px 12px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.3px;
+}
+
+/* 즐겨찾기 행 삭제 버튼 */
+.addr-option {
+  position: relative;
+}
+
+.addr-del {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 15px;
+  padding: 2px 4px;
+  border-radius: 5px;
+}
+
+.addr-del:hover {
+  color: var(--neg);
+  background: #fff0ee;
+}
+
+.addr-jibun {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.route-select {
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  padding: 8px 12px;
+  font: inherit;
+  background: var(--surface);
+  cursor: pointer;
+  outline: none;
+}
+
+.route-result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: var(--accent-soft);
+  border-radius: 10px;
+  font-size: 13.5px;
+  color: var(--text);
+}
+
+.route-result strong {
+  color: var(--accent);
+}
+
 /* ---------- 저장된 정산 내역 ---------- */
 .saved-list {
   list-style: none;
@@ -474,6 +683,11 @@ td.add-col-spacer {
 .saved-item:hover {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+/* 데스크톱에서는 액션들을 saved-item 의 직접 flex 자식처럼 펼침 */
+.saved-actions {
+  display: contents;
 }
 
 .saved-main {
@@ -719,4 +933,87 @@ td.ro-cell:empty::after {
 
 .toast.error {
   background: var(--neg);
+}
+
+/* ====================== 모바일 (≤600px) ====================== */
+@media (max-width: 600px) {
+  .page {
+    padding: 24px 16px 64px;
+  }
+
+  .page-header h1 {
+    font-size: 22px;
+  }
+
+  /* 경로 입력 폼: 세로 스택, 각 컨트롤 풀폭 */
+  .route-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .route-form .addr-field,
+  .route-form .route-select,
+  .route-form .btn {
+    width: 100%;
+  }
+  .route-arrow {
+    display: none;
+  }
+
+  /* 카드 헤더(정산결과 + 저장): 세로 스택 */
+  .card-head-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .snapshot-create {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .snapshot-input {
+    width: 100%;
+  }
+
+  /* 저장된 정산 내역: 제목 위 / 액션 아래 행 */
+  .saved-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .saved-actions {
+    display: flex;
+    border-top: 1px solid var(--border);
+  }
+  .saved-actions .saved-action,
+  .saved-actions .del-btn-visible {
+    flex: 1;
+    justify-content: center;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+  .saved-actions > :first-child {
+    border-left: none;
+  }
+
+  /* 정산 결과 카드 금액 살짝 축소 */
+  .result-amount {
+    font-size: 20px;
+  }
+
+  /* 모달: 화면에 꽉 차지 않게 + 헤더 세로 스택 */
+  .modal {
+    max-height: 88vh;
+    padding: 18px 16px 20px;
+  }
+  .modal-head {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .modal-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  /* 내역 표: 여백/폰트 축소로 금액 줄바꿈 방지 */
+  .snapshot-table th,
+  .snapshot-table td {
+    padding: 8px 6px;
+    font-size: 12.5px;
+  }
 }
